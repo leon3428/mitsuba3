@@ -38,25 +38,27 @@ template <typename Point_, typename Spectrum_> struct Ray {
     Float time = (ScalarFloat) 0.f;
     /// Wavelength associated with the ray
     Wavelength wavelengths;
+    /// Ray id
+    unsigned id;
 
     /// Construct a new ray (o, d) at time 'time'
     Ray(const Point &o, const Vector &d, Float time,
         const Wavelength &wavelengths)
-        : o(o), d(d), time(time), wavelengths(wavelengths) { }
+        : o(o), d(d), time(time), wavelengths(wavelengths), id(0) { }
 
     /// Construct a new ray (o, d) with time
     Ray(const Point &o, const Vector &d, const Float &time = (ScalarFloat) 0.f)
-        : o(o), d(d), time(time) { }
+        : o(o), d(d), time(time), id(0) { }
 
     /// Construct a new ray (o, d) with bounds
     Ray(const Point &o, const Vector &d, Float maxt, Float time,
         const Wavelength &wavelengths)
-        : o(o), d(d), maxt(maxt), time(time), wavelengths(wavelengths) {}
+        : o(o), d(d), maxt(maxt), time(time), wavelengths(wavelengths), id(0) {}
 
     /// Copy a ray, but change the maxt value
     Ray(const Ray &r, Float maxt)
         : o(r.o), d(r.d), maxt(maxt),
-          time(r.time), wavelengths(r.wavelengths) { }
+          time(r.time), wavelengths(r.wavelengths), id(r.id) { }
 
     /// Return the position of a point along the ray
     Point operator() (Float t) const { return dr::fmadd(d, t, o); }
@@ -69,10 +71,11 @@ template <typename Point_, typename Spectrum_> struct Ray {
         result.maxt        = maxt;
         result.time        = time;
         result.wavelengths = wavelengths;
+        result.id          = id;
         return result;
     }
 
-    DRJIT_STRUCT(Ray, o, d, maxt, time, wavelengths)
+    DRJIT_STRUCT(Ray, o, d, maxt, time, wavelengths, id)
 };
 
 /**

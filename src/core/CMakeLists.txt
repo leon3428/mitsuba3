@@ -65,6 +65,8 @@ add_library(mitsuba-core OBJECT
                     ${INC_DIR}/quad.h
 
   dither-matrix256.cpp
+  ltm.cpp           ${INC_DIR}/ltm.h
+
 )
 
 set_property(

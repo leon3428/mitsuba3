@@ -1,0 +1,105 @@
+diff --git a/.gitignore b/.gitignore
+index 99adbc8a..b22a9d59 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -28,3 +28,5 @@ __pycache__
+ /docs/src/quickstart
+ /docs/src/generated
+ /docs/resources
++
++/.cache
+\ No newline at end of file
+diff --git a/include/mitsuba/core/ray.h b/include/mitsuba/core/ray.h
+index 280f82f9..2a23c3ca 100644
+--- a/include/mitsuba/core/ray.h
++++ b/include/mitsuba/core/ray.h
+@@ -38,25 +38,27 @@ template <typename Point_, typename Spectrum_> struct Ray {
+     Float time = (ScalarFloat) 0.f;
+     /// Wavelength associated with the ray
+     Wavelength wavelengths;
++    /// Ray id
++    unsigned id;
+ 
+     /// Construct a new ray (o, d) at time 'time'
+     Ray(const Point &o, const Vector &d, Float time,
+         const Wavelength &wavelengths)
+-        : o(o), d(d), time(time), wavelengths(wavelengths) { }
++        : o(o), d(d), time(time), wavelengths(wavelengths), id(0) { }
+ 
+     /// Construct a new ray (o, d) with time
+     Ray(const Point &o, const Vector &d, const Float &time = (ScalarFloat) 0.f)
+-        : o(o), d(d), time(time) { }
++        : o(o), d(d), time(time), id(0) { }
+ 
+     /// Construct a new ray (o, d) with bounds
+     Ray(const Point &o, const Vector &d, Float maxt, Float time,
+         const Wavelength &wavelengths)
+-        : o(o), d(d), maxt(maxt), time(time), wavelengths(wavelengths) {}
++        : o(o), d(d), maxt(maxt), time(time), wavelengths(wavelengths), id(0) {}
+ 
+     /// Copy a ray, but change the maxt value
+     Ray(const Ray &r, Float maxt)
+         : o(r.o), d(r.d), maxt(maxt),
+-          time(r.time), wavelengths(r.wavelengths) { }
++          time(r.time), wavelengths(r.wavelengths), id(r.id) { }
+ 
+     /// Return the position of a point along the ray
+     Point operator() (Float t) const { return dr::fmadd(d, t, o); }
+@@ -69,10 +71,11 @@ template <typename Point_, typename Spectrum_> struct Ray {
+         result.maxt        = maxt;
+         result.time        = time;
+         result.wavelengths = wavelengths;
++        result.id          = id;
+         return result;
+     }
+ 
+-    DRJIT_STRUCT(Ray, o, d, maxt, time, wavelengths)
++    DRJIT_STRUCT(Ray, o, d, maxt, time, wavelengths, id)
+ };
+ 
+ /**
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+index 2580376d..3cb672c2 100644
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -65,6 +65,8 @@ add_library(mitsuba-core OBJECT
+                     ${INC_DIR}/quad.h
+ 
+   dither-matrix256.cpp
++  ltm.cpp           ${INC_DIR}/ltm.h
++
+ )
+ 
+ set_property(
+diff --git a/src/core/python/CMakeLists.txt b/src/core/python/CMakeLists.txt
+index 204949e0..9ba5f2cb 100644
+--- a/src/core/python/CMakeLists.txt
++++ b/src/core/python/CMakeLists.txt
+@@ -18,6 +18,7 @@ set(CORE_PY_V_SRC
+   ${CMAKE_CURRENT_SOURCE_DIR}/vector_v.cpp
+   ${CMAKE_CURRENT_SOURCE_DIR}/warp_v.cpp
+   ${CMAKE_CURRENT_SOURCE_DIR}/xml_v.cpp
++  ${CMAKE_CURRENT_SOURCE_DIR}/ltm_v.cpp
+   ${CMAKE_CURRENT_SOURCE_DIR}/quad_v.cpp
+   PARENT_SCOPE
+ )
+diff --git a/src/python/main_v.cpp b/src/python/main_v.cpp
+index 200ad09e..4e4d60a0 100644
+--- a/src/python/main_v.cpp
++++ b/src/python/main_v.cpp
+@@ -80,6 +80,7 @@ MI_PY_DECLARE(Transform);
+ MI_PY_DECLARE(vector);
+ MI_PY_DECLARE(warp);
+ MI_PY_DECLARE(xml);
++MI_PY_DECLARE(ltm);
+ MI_PY_DECLARE(quad);
+ 
+ // render
+@@ -181,6 +182,7 @@ NB_MODULE(MI_VARIANT_NAME, m) {
+     MI_PY_IMPORT_SUBMODULE(quad);
+     MI_PY_IMPORT_SUBMODULE(warp);
+     MI_PY_IMPORT(xml);
++    MI_PY_IMPORT(ltm);
+ 
+     MI_PY_IMPORT(Scene);
+     MI_PY_IMPORT(Shape);

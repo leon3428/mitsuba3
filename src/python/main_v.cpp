@@ -80,6 +80,7 @@ MI_PY_DECLARE(Transform);
 MI_PY_DECLARE(vector);
 MI_PY_DECLARE(warp);
 MI_PY_DECLARE(xml);
+MI_PY_DECLARE(ltm);
 MI_PY_DECLARE(quad);
 
 // render
@@ -181,6 +182,7 @@ NB_MODULE(MI_VARIANT_NAME, m) {
     MI_PY_IMPORT_SUBMODULE(quad);
     MI_PY_IMPORT_SUBMODULE(warp);
     MI_PY_IMPORT(xml);
+    MI_PY_IMPORT(ltm);
 
     MI_PY_IMPORT(Scene);
     MI_PY_IMPORT(Shape);
