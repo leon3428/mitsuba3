@@ -16,13 +16,17 @@
 MI_PY_EXPORT(ltm) {
     MI_PY_IMPORT_TYPES()
 
-    m.def(
-        "add",
-        [](int a, int b) {
-            return mitsuba::ltm::add(a, b);
-        },
-        "a"_a, "b"_a,
-        "doc");  
+    nb::class_<LTM<Float, Spectrum>>(m, "LTM", "bla bla")
+        .def("sample", &LTM<Float, Spectrum>::sample);
+
+
+//     m.def(
+//         "add",
+//         [](int a, int b) {
+//             return mitsuba::ltm::add(a, b);
+//         },
+//         "a"_a, "b"_a,
+//         "doc");  
 }
 
 #undef SET_PROPS
