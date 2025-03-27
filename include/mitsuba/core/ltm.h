@@ -1,13 +1,16 @@
 #pragma once
 
+#include "drjit/dynamic.h"
+#include "mitsuba/core/spectrum.h"
+#include <cstddef>
+#include <cstdint>
+#include <drjit/array.h>
 #include <mitsuba/core/properties.h>
 #include <mitsuba/core/ray.h>
 #include <mitsuba/render/bsdf.h>
 #include <mitsuba/render/emitter.h>
 #include <mitsuba/render/integrator.h>
 #include <mitsuba/render/records.h>
-#include <drjit/array.h>
-#include <cstdint>
 
 NAMESPACE_BEGIN(mitsuba)
 
@@ -15,25 +18,28 @@ template <typename Float, typename Spectrum> class MI_EXPORT_LIB LTM {
 public:
     MI_IMPORT_TYPES(Scene, Sampler, Medium, Emitter, EmitterPtr, BSDF, BSDFPtr)
 
-    LTM() {}
+    LTM(size_t projector_width, size_t projector_height, uint32_t max_depth,
+        uint32_t rr_depth, bool hide_emitters)
+        : m_projector_width(projector_width),
+          m_projector_height(projector_height), m_max_depth(max_depth),
+          m_rr_depth(rr_depth), m_hide_emitters(hide_emitters) {}
 
-    void sample(const Scene *scene, Sampler *sampler,
-                                     const RayDifferential3f &ray_,
-                                     const Medium * /* medium */,
-                                     Float * /* aovs */,
-                                     Bool active) const {
+    std::tuple<dr::Array<float>, Bool>
+    sample(const Scene *scene, Sampler *sampler, const RayDifferential3f &ray_,
+           const Medium * /* medium */, Float * /* aovs */, Bool active) const {
         MI_MASKED_FUNCTION(ProfilerPhase::SamplingIntegratorSample, active);
 
         if (unlikely(m_max_depth == 0))
-            return /*{ 0.f, false }*/;
+            return { 0.f, false };
 
         // --------------------- Configure loop state ----------------------
 
-        Ray3f ray           = Ray3f(ray_);
-        Spectrum throughput = 1.f;
-        dr::Tensor<Spectrum> result = dr::zeros<Spectrum>(m_projector_height * m_projector_width);
-        Float eta           = 1.f;
-        UInt32 depth        = 0;
+        Ray3f ray               = Ray3f(ray_);
+        Spectrum throughput     = 1.f;
+        dr::Array<float> result = dr::zeros<dr::Array<float>>(
+            m_projector_height * m_projector_width * 3);
+        Float eta    = 1.f;
+        UInt32 depth = 0;
 
         // If m_hide_emitters == false, the environment emitter will be visible
         Mask valid_ray = !m_hide_emitters && (scene->environment() != nullptr);
@@ -53,7 +59,7 @@ public:
         struct LoopState {
             Ray3f ray;
             Spectrum throughput;
-            dr::Tensor<Spectrum> result;
+            dr::Array<float> result;
             Float eta;
             UInt32 depth;
             Mask valid_ray;
@@ -94,7 +100,7 @@ public:
                 if (dr::any_or<true>(si.emitter(scene) != nullptr)) {
                     DirectionSample3f ds(scene, si, ls.prev_si);
                     Float em_pdf = 0.f;
-                    auto uv = si.uv;
+                    auto uv      = si.uv;
 
                     if (dr::any_or<true>(!ls.prev_bsdf_delta))
                         em_pdf = scene->pdf_emitter_direction(
@@ -106,10 +112,24 @@ public:
 
                     // Accumulate, being careful with polarization (see
                     // spec_fma)
-                    // ls.result = spec_fma(
-                    //     ls.throughput,
-                    //     ds.emitter->eval(si, ls.prev_bsdf_pdf > 0.f) * mis_bsdf,
-                    //     ls.result);
+                    auto ind = uv_to_ind(uv);
+                    auto addition =
+                        ls.throughput *
+                        ds.emitter->eval(si, ls.prev_bsdf_pdf > 0.f) * mis_bsdf;
+
+                    if constexpr (dr::is_jit_v<UInt32>) {
+                        // UInt32 offset    = { 0, 1, 2 };
+                        // UInt32 ind_array = dr::tile(ind, 3) * 3 + offset;
+                        // dr::scatter_add(ls.result, addition, ind_array);
+                    } else {
+                        dr::DynamicArray<float> a          = { addition.x(),
+                                                               addition.y(),
+                                                               addition.z() };
+                        dr::DynamicArray<UInt32> ind_array = { ind * 3,
+                                                               ind * 3 + 1,
+                                                               ind * 3 + 2 };
+                        dr::scatter_add(ls.result, a, ind_array);
+                    }
                 }
 
                 // Continue tracing the path at this point?
@@ -167,7 +187,7 @@ public:
 
                 if (dr::any_or<true>(active_em)) {
                     bsdf_val = si.to_world_mueller(bsdf_val, -wo, si.wi);
-                    auto uv = ds.uv;
+                    auto uv  = ds.uv;
 
                     // Compute the MIS weight
                     Float mis_em =
@@ -175,9 +195,23 @@ public:
 
                     // Accumulate, being careful with polarization (see
                     // spec_fma)
-                    // ls.result[active_em] =
-                    //     spec_fma(ls.throughput, bsdf_val * em_weight * mis_em,
-                    //              ls.result);
+                    auto ind = uv_to_ind(uv);
+                    auto addition =
+                        ls.throughput * bsdf_val * em_weight * mis_em;
+
+                    if constexpr (dr::is_jit_v<UInt32>) {
+                        // UInt32 offset    = { 0, 1, 2 };
+                        // UInt32 ind_array = dr::tile(ind, 3) * 3 + offset;
+                        // dr::scatter_add(ls.result, addition, ind_array);
+                    } else {
+                        dr::DynamicArray<float> a          = { addition.x(),
+                                                               addition.y(),
+                                                               addition.z() };
+                        dr::DynamicArray<UInt32> ind_array = { ind * 3,
+                                                               ind * 3 + 1,
+                                                               ind * 3 + 2 };
+                        dr::scatter_add(ls.result, a, ind_array);
+                    }
                 }
 
                 // ---------------------- BSDF sampling ----------------------
@@ -243,6 +277,7 @@ public:
 
         // return { /* spec  = */ dr::select(ls.valid_ray, ls.result, 0.f),
         //          /* valid = */ ls.valid_ray };
+        return { ls.result, ls.valid_ray };
     }
 
     /// Compute a multiple importance sampling weight using the power heuristic
@@ -265,9 +300,16 @@ public:
             return dr::fmadd(a, b, c);
     }
 
+    UInt32 uv_to_ind(Point2f uv) const {
+        auto x = static_cast<UInt32>(uv[0] * (m_projector_width - 1));
+        auto y = static_cast<UInt32>((1.0f - uv[1]) * (m_projector_height - 1));
+
+        return y * m_projector_width + x;
+    }
+
 private:
-    uint32_t m_projector_width;
-    uint32_t m_projector_height;
+    size_t m_projector_width;
+    size_t m_projector_height;
     uint32_t m_max_depth;
     uint32_t m_rr_depth;
     bool m_hide_emitters;
