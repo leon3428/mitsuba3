@@ -24,9 +24,9 @@ public:
           m_projector_height(projector_height), m_max_depth(max_depth),
           m_rr_depth(rr_depth), m_hide_emitters(hide_emitters) {}
 
-    std::tuple<dr::Array<float>, Bool>
+    std::pair<dr::DynamicArray<float>, Bool>
     sample(const Scene *scene, Sampler *sampler, const RayDifferential3f &ray_,
-           const Medium * /* medium */, Float * /* aovs */, Bool active) const {
+           Bool active) const {
         MI_MASKED_FUNCTION(ProfilerPhase::SamplingIntegratorSample, active);
 
         if (unlikely(m_max_depth == 0))
@@ -34,10 +34,10 @@ public:
 
         // --------------------- Configure loop state ----------------------
 
-        Ray3f ray               = Ray3f(ray_);
-        Spectrum throughput     = 1.f;
-        dr::Array<float> result = dr::zeros<dr::Array<float>>(
-            m_projector_height * m_projector_width * 3);
+        Ray3f ray                      = Ray3f(ray_);
+        Spectrum throughput            = 1.f;
+        dr::DynamicArray<float> result = dr::zeros<dr::DynamicArray<float>>(
+            m_projector_height * m_projector_width);
         Float eta    = 1.f;
         UInt32 depth = 0;
 
@@ -59,7 +59,7 @@ public:
         struct LoopState {
             Ray3f ray;
             Spectrum throughput;
-            dr::Array<float> result;
+            dr::DynamicArray<float> result;
             Float eta;
             UInt32 depth;
             Mask valid_ray;
@@ -122,13 +122,13 @@ public:
                         // UInt32 ind_array = dr::tile(ind, 3) * 3 + offset;
                         // dr::scatter_add(ls.result, addition, ind_array);
                     } else {
-                        dr::DynamicArray<float> a          = { addition.x(),
-                                                               addition.y(),
-                                                               addition.z() };
-                        dr::DynamicArray<UInt32> ind_array = { ind * 3,
-                                                               ind * 3 + 1,
-                                                               ind * 3 + 2 };
-                        dr::scatter_add(ls.result, a, ind_array);
+                        if (uv.x() >= 0.0f && uv.x() <= 1.0f &&
+                            uv.y() >= 0.0f && uv.y() <= 1.0f) {
+
+                            dr::DynamicArray<float> a = { addition.x() };
+                            dr::DynamicArray<UInt32> ind_array = { ind };
+                            dr::scatter_add(ls.result, a, ind_array);
+                        }
                     }
                 }
 
@@ -204,13 +204,12 @@ public:
                         // UInt32 ind_array = dr::tile(ind, 3) * 3 + offset;
                         // dr::scatter_add(ls.result, addition, ind_array);
                     } else {
-                        dr::DynamicArray<float> a          = { addition.x(),
-                                                               addition.y(),
-                                                               addition.z() };
-                        dr::DynamicArray<UInt32> ind_array = { ind * 3,
-                                                               ind * 3 + 1,
-                                                               ind * 3 + 2 };
-                        dr::scatter_add(ls.result, a, ind_array);
+                        if (uv.x() >= 0.0f && uv.x() <= 1.0f &&
+                            uv.y() >= 0.0f && uv.y() <= 1.0f) {
+                            dr::DynamicArray<float> a = { addition.x() };
+                            dr::DynamicArray<UInt32> ind_array = { ind };
+                            dr::scatter_add(ls.result, a, ind_array);
+                        }
                     }
                 }
 

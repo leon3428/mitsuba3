@@ -1,13 +1,8 @@
 #include <cstddef>
 #include <cstdint>
-#include <drjit/tensor.h>
-#include <mitsuba/core/filesystem.h>
-#include <mitsuba/core/fresolver.h>
 #include <mitsuba/core/ltm.h>
-#include <mitsuba/core/plugin.h>
 #include <mitsuba/core/properties.h>
 #include <mitsuba/core/spectrum.h>
-#include <mitsuba/core/transform.h>
 #include <mitsuba/python/python.h>
 #include <nanothread/nanothread.h>
 
