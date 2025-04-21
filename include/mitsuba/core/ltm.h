@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drjit-core/jit.h"
 #include "drjit/dynamic.h"
 #include "mitsuba/core/spectrum.h"
 #include <cstddef>
@@ -11,22 +12,29 @@
 #include <mitsuba/render/emitter.h>
 #include <mitsuba/render/integrator.h>
 #include <mitsuba/render/records.h>
+#include <type_traits>
 
 NAMESPACE_BEGIN(mitsuba)
+
+template <typename Float>
+using ResultArray = typename std::conditional<dr::is_array_v<Float>, Float,
+                                              dr::DynamicArray<Float>>::type;
 
 template <typename Float, typename Spectrum> class MI_EXPORT_LIB LTM {
 public:
     MI_IMPORT_TYPES(Scene, Sampler, Medium, Emitter, EmitterPtr, BSDF, BSDFPtr)
 
-    LTM(size_t projector_width, size_t projector_height, uint32_t max_depth,
-        uint32_t rr_depth, bool hide_emitters)
-        : m_projector_width(projector_width),
+    LTM(size_t sensor_width, size_t sensor_height, size_t projector_width,
+        size_t projector_height, uint32_t max_depth, uint32_t rr_depth,
+        bool hide_emitters)
+        : m_sensor_width(sensor_width), m_sensor_height(sensor_height),
+          m_projector_width(projector_width),
           m_projector_height(projector_height), m_max_depth(max_depth),
           m_rr_depth(rr_depth), m_hide_emitters(hide_emitters) {}
 
-    std::pair<dr::DynamicArray<float>, Bool>
+    std::pair<ResultArray<Float>, Bool>
     sample(const Scene *scene, Sampler *sampler, const RayDifferential3f &ray_,
-           Bool active) const {
+           const Point2i &ray_origin_, Bool active) const {
         MI_MASKED_FUNCTION(ProfilerPhase::SamplingIntegratorSample, active);
 
         if (unlikely(m_max_depth == 0))
@@ -34,10 +42,11 @@ public:
 
         // --------------------- Configure loop state ----------------------
 
-        Ray3f ray                      = Ray3f(ray_);
-        Spectrum throughput            = 1.f;
-        dr::DynamicArray<float> result = dr::zeros<dr::DynamicArray<float>>(
-            m_projector_height * m_projector_width);
+        Ray3f ray                 = Ray3f(ray_);
+        Spectrum throughput       = 1.f;
+        ResultArray<Float> result = dr::zeros<ResultArray<Float>>(
+            m_sensor_height * m_sensor_width * m_projector_height *
+            m_projector_width);
         Float eta    = 1.f;
         UInt32 depth = 0;
 
@@ -58,8 +67,9 @@ public:
         */
         struct LoopState {
             Ray3f ray;
+            Point2i ray_origin;
             Spectrum throughput;
-            dr::DynamicArray<float> result;
+            ResultArray<Float> result;
             Float eta;
             UInt32 depth;
             Mask valid_ray;
@@ -69,13 +79,12 @@ public:
             Bool active;
             Sampler *sampler;
 
-            DRJIT_STRUCT(LoopState, ray, throughput, result, eta, depth,
-                         valid_ray, prev_si, prev_bsdf_pdf, prev_bsdf_delta,
-                         active, sampler)
-        } ls = { ray,     throughput,    result,
-                 eta,     depth,         valid_ray,
-                 prev_si, prev_bsdf_pdf, prev_bsdf_delta,
-                 active,  sampler };
+            DRJIT_STRUCT(LoopState, ray, ray_origin, throughput, result, eta,
+                         depth, valid_ray, prev_si, prev_bsdf_pdf,
+                         prev_bsdf_delta, active, sampler)
+        } ls = { ray,           ray_origin_,     throughput, result,
+                 eta,           depth,           valid_ray,  prev_si,
+                 prev_bsdf_pdf, prev_bsdf_delta, active,     sampler };
 
         dr::tie(ls) = dr::while_loop(
             dr::make_tuple(ls), [](const LoopState &ls) { return ls.active; },
@@ -112,15 +121,15 @@ public:
 
                     // Accumulate, being careful with polarization (see
                     // spec_fma)
-                    auto ind = uv_to_ind(uv);
+                    auto ind = ltm_ind(ls.ray_origin, uv);
                     auto addition =
                         ls.throughput *
                         ds.emitter->eval(si, ls.prev_bsdf_pdf > 0.f) * mis_bsdf;
+                    auto mask = uv.x() >= 0.0f && uv.x() <= 1.0f &&
+                                uv.y() >= 0.0f && uv.y() <= 1.0f;
 
-                    if constexpr (dr::is_jit_v<UInt32>) {
-                        // UInt32 offset    = { 0, 1, 2 };
-                        // UInt32 ind_array = dr::tile(ind, 3) * 3 + offset;
-                        // dr::scatter_add(ls.result, addition, ind_array);
+                    if constexpr (dr::is_array_v<UInt32>) {
+                        dr::scatter_add(ls.result, addition.x(), ind, mask);
                     } else {
                         if (uv.x() >= 0.0f && uv.x() <= 1.0f &&
                             uv.y() >= 0.0f && uv.y() <= 1.0f) {
@@ -195,14 +204,14 @@ public:
 
                     // Accumulate, being careful with polarization (see
                     // spec_fma)
-                    auto ind = uv_to_ind(uv);
+                    auto ind = ltm_ind(ls.ray_origin, uv);
                     auto addition =
                         ls.throughput * bsdf_val * em_weight * mis_em;
+                    auto mask = uv.x() >= 0.0f && uv.x() <= 1.0f &&
+                                uv.y() >= 0.0f && uv.y() <= 1.0f;
 
-                    if constexpr (dr::is_jit_v<UInt32>) {
-                        // UInt32 offset    = { 0, 1, 2 };
-                        // UInt32 ind_array = dr::tile(ind, 3) * 3 + offset;
-                        // dr::scatter_add(ls.result, addition, ind_array);
+                    if constexpr (dr::is_array_v<UInt32>) {
+                        dr::scatter_add(ls.result, addition.x(), ind, mask);
                     } else {
                         if (uv.x() >= 0.0f && uv.x() <= 1.0f &&
                             uv.y() >= 0.0f && uv.y() <= 1.0f) {
@@ -299,14 +308,24 @@ public:
             return dr::fmadd(a, b, c);
     }
 
-    UInt32 uv_to_ind(Point2f uv) const {
-        auto x = static_cast<UInt32>(uv[0] * (m_projector_width - 1));
-        auto y = static_cast<UInt32>((1.0f - uv[1]) * (m_projector_height - 1));
+    UInt32 ltm_ind(Point2i ray_origin, Point2f uv) const {
+        auto ray_destination_x =
+            static_cast<UInt32>(uv[0] * (m_projector_width - 1));
+        auto ray_destination_y =
+            static_cast<UInt32>((1.0f - uv[1]) * (m_projector_height - 1));
 
-        return y * m_projector_width + x;
+        // return y * m_projector_width + x;
+        auto a          = m_projector_width * m_projector_height;
+        auto sensor_ind = ray_origin.y() * m_sensor_width + ray_origin.x();
+        auto projector_ind =
+            ray_destination_y * m_projector_width + ray_destination_x;
+
+        return sensor_ind * a + projector_ind;
     }
 
 private:
+    size_t m_sensor_width;
+    size_t m_sensor_height;
     size_t m_projector_width;
     size_t m_projector_height;
     uint32_t m_max_depth;

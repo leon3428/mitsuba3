@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-camera_size = (64, 64)
-projector_size = (64, 64)
+camera_size = (128, 128)
+projector_size = (128, 128)
 
 loaded = np.load('python/tmp.npz')
 ltm = loaded['ltm'].reshape((camera_size[0] * camera_size[1], projector_size[0] * projector_size[1]))

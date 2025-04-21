@@ -1,0 +1,75 @@
+<scene version="3.0.0">
+    <default name="spp" value="128"/>
+    <default name="res" value="128"/>
+    <default name="max_depth" value="6"/>
+    <default name="integrator" value="path"/>
+
+    <integrator type='$integrator'>
+        <integer name="max_depth" value="$max_depth"/>
+    </integrator>
+
+    <sensor type="perspective" id="sensor">
+        <float name="near_clip" value="0.001"/>
+        <float name="far_clip" value="10.0"/>
+        <string name="focal_length" value="70mm"/>
+        <!-- <float name="focus_distance" value="1"/> -->
+        <transform name="to_world">
+            <lookat origin="-0.1, -0.8, 0.5"
+                    target="-0.1,  0.0, 0.5"
+                    up    =" 0.0,  0.0, 1.0"/>
+        </transform>
+        <sampler type="independent">
+            <integer name="sample_count" value="$spp"/>
+        </sampler>
+        <film type="hdrfilm">
+            <integer name="width"  value="$res"/>
+            <integer name="height" value="$res"/>
+            <rfilter type="tent"/>
+            <string name="pixel_format" value="luminance"/>
+            <string name="component_format" value="float32"/>
+        </film>
+    </sensor>
+
+    <!-- BSDFs -->
+
+    <bsdf type="diffuse" id="black">
+        <rgb name="reflectance" value="0.05"/>
+    </bsdf>
+
+    <bsdf type="diffuse" id="white">
+        <rgb name="reflectance" value="0.95"/>
+    </bsdf>
+
+    <!-- Light -->
+    <!-- <emitter type="point">
+        <point name="position" value="0.2, -0.8, 0.5"/>
+        <rgb name="intensity" value="1.5"/>
+    </emitter> -->
+
+    <emitter type="projector">
+        <rgb name="irradiance" value="1.0"/>
+        <float name="scale" value="2"/>
+        <float name="fov" value="38"/>
+        <transform name="to_world">
+            <lookat origin="0.1, -0.8, 0.5"
+                    target="0.1,  0.0, 0.5"
+                    up    ="0.0,  0.0, 1.0"/>
+        </transform>
+    </emitter>
+
+    <!-- Shapes -->
+    <shape type="ply" id="box">
+        <string name="filename" value="meshes/box.ply"/>
+        <ref id="black"/>
+    </shape>
+
+    <shape type="ply" id="screen">
+        <string name="filename" value="meshes/screen.ply"/>
+        <ref id="white"/>
+    </shape>
+
+    <shape type="ply" id="monkey">
+        <string name="filename" value="meshes/monkey.ply"/>
+        <ref id="white"/>
+    </shape>
+</scene>
