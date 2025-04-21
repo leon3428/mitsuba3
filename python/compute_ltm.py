@@ -18,7 +18,6 @@ sampler = sensor.sampler()
 medium = None
 sample_count = sampler.sample_count()
 
-# integrator = scene.integrator()
 integrator = mi.LTM(sensor_size[0], sensor_size[1],
                     projector_size[0], projector_size[1], 6, 5, False)
 
@@ -53,7 +52,8 @@ if ray.has_differentials:
 spec, mask = integrator.sample(scene, sampler, ray, pos, active)
 
 ltm = spec.numpy()
-np.savez_compressed('python/tmp', ltm=ltm)
+np.savez_compressed('python/tmp', ltm=ltm,
+                    sensor_size=sensor_size, projector_size=projector_size)
 
 end_t = time.time()
 print(end_t - start_t)
