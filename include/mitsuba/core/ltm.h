@@ -23,32 +23,27 @@ template <typename Float, typename Spectrum> class MI_EXPORT_LIB LTM {
 public:
     MI_IMPORT_TYPES(Scene, Sampler, Medium, Emitter, EmitterPtr, BSDF, BSDFPtr)
 
+    constexpr static uint32_t max_depth = 6;
+
     LTM(size_t sensor_width, size_t sensor_height, size_t projector_width,
-        size_t projector_height, uint32_t max_depth, uint32_t rr_depth,
-        bool hide_emitters)
+        size_t projector_height, uint32_t rr_depth, bool hide_emitters)
         : m_sensor_width(sensor_width), m_sensor_height(sensor_height),
           m_projector_width(projector_width),
-          m_projector_height(projector_height), m_max_depth(max_depth),
-          m_rr_depth(rr_depth), m_hide_emitters(hide_emitters) {}
+          m_projector_height(projector_height), m_rr_depth(rr_depth),
+          m_hide_emitters(hide_emitters) {}
 
-    std::pair<ResultArray<Float>, Bool>
+    std::pair<dr::Array<Point3f, max_depth>, Bool>
     sample(const Scene *scene, Sampler *sampler, const RayDifferential3f &ray_,
            const Point2i &ray_origin_, Bool active) const {
         MI_MASKED_FUNCTION(ProfilerPhase::SamplingIntegratorSample, active);
 
-        if (unlikely(m_max_depth == 0))
-            return { 0.f, false };
-
         if constexpr (dr::is_array_v<Float>) {
             // --------------------- Configure loop state ----------------------
 
-            Ray3f ray                 = Ray3f(ray_);
-            Spectrum throughput       = 1.f;
-            ResultArray<Float> result = dr::zeros<ResultArray<Float>>(
-                m_sensor_height * m_sensor_width * m_projector_height *
-                m_projector_width);
-            Float eta    = 1.f;
-            UInt32 depth = 0;
+            Ray3f ray           = Ray3f(ray_);
+            Spectrum throughput = 1.f;
+            Float eta           = 1.f;
+            UInt32 depth        = 0;
 
             // If m_hide_emitters == false, the environment emitter will be
             // visible
@@ -60,6 +55,10 @@ public:
             Float prev_bsdf_pdf   = 1.f;
             Bool prev_bsdf_delta  = true;
             BSDFContext bsdf_ctx;
+            dr::Array<Point3f, max_depth> result = 0.f;
+            UInt32 ind                           = 0;
+
+            const auto indices = dr::arange<UInt32>(max_depth);
 
             /* Set up a Dr.Jit loop. This optimizes away to a normal loop in
                scalar mode, and it generates either a a megakernel (default) or
@@ -71,7 +70,6 @@ public:
                 Ray3f ray;
                 Point2i ray_origin;
                 Spectrum throughput;
-                ResultArray<Float> result;
                 Float eta;
                 UInt32 depth;
                 Mask valid_ray;
@@ -80,21 +78,26 @@ public:
                 Bool prev_bsdf_delta;
                 Bool active;
                 Sampler *sampler;
+                dr::Array<Point3f, max_depth> result;
+                UInt32 ind;
 
-                DRJIT_STRUCT(LoopState, ray, ray_origin, throughput, result,
-                             eta, depth, valid_ray, prev_si, prev_bsdf_pdf,
-                             prev_bsdf_delta, active, sampler)
-            } ls = { ray,           ray_origin_,     throughput, result,
-                     eta,           depth,           valid_ray,  prev_si,
-                     prev_bsdf_pdf, prev_bsdf_delta, active,     sampler };
+                DRJIT_STRUCT(LoopState, ray, ray_origin, throughput, eta, depth,
+                             valid_ray, prev_si, prev_bsdf_pdf, prev_bsdf_delta,
+                             active, sampler, result, ind)
+            } ls = { ray,     ray_origin_,   throughput,
+                     eta,     depth,         valid_ray,
+                     prev_si, prev_bsdf_pdf, prev_bsdf_delta,
+                     active,  sampler,       result,
+                     ind };
 
             dr::tie(ls) = dr::while_loop(
                 dr::make_tuple(ls),
                 [](const LoopState &ls) { return ls.active; },
-                [this, scene, bsdf_ctx](LoopState &ls) {
+                [this, scene, bsdf_ctx, indices](LoopState &ls) {
                     /* dr::while_loop implicitly masks all code in the loop
                        using the 'active' flag, so there is no need to pass it
                        to every function */
+                    auto ind = ls.ind;
 
                     SurfaceInteraction3f si =
                         scene->ray_intersect(ls.ray,
@@ -123,22 +126,20 @@ public:
                         // bounce
                         Float mis_bsdf = mis_weight(ls.prev_bsdf_pdf, em_pdf);
 
-                        // Accumulate, being careful with polarization (see
-                        // spec_fma)
-                        auto ind = ltm_ind(ls.ray_origin, uv);
-                        auto addition =
+                        auto value =
                             ls.throughput *
                             ds.emitter->eval(si, ls.prev_bsdf_pdf > 0.f) *
                             mis_bsdf;
-                        auto mask = uv.x() >= 0.0f && uv.x() <= 1.0f &&
-                                    uv.y() >= 0.0f && uv.y() <= 1.0f;
 
-                        dr::scatter_add(ls.result, addition.x(), ind, mask);
+                        // auto mask     = indices == ind;
+                        // auto addition = dr::Array<Point3f, max_depth>(
+                        //     Point3f(value.x(), uv.x(), uv.y()));
+                        // ls.result += addition & mask;
                     }
 
                     // Continue tracing the path at this point?
                     Bool active_next =
-                        (ls.depth + 1 < m_max_depth) && si.is_valid();
+                        (ls.depth + 1 < max_depth) && si.is_valid();
 
                     if (dr::none_or<false>(active_next)) {
                         ls.active = active_next;
@@ -201,15 +202,12 @@ public:
                         Float mis_em = dr::select(ds.delta, 1.f,
                                                   mis_weight(ds.pdf, bsdf_pdf));
 
-                        // Accumulate, being careful with polarization (see
-                        // spec_fma)
-                        auto ind = ltm_ind(ls.ray_origin, uv);
-                        auto addition =
+                        auto value =
                             ls.throughput * bsdf_val * em_weight * mis_em;
-                        auto mask = uv.x() >= 0.0f && uv.x() <= 1.0f &&
-                                    uv.y() >= 0.0f && uv.y() <= 1.0f;
-
-                        dr::scatter_add(ls.result, addition.x(), ind, mask);
+                        // auto mask     = indices == ind;
+                        // auto addition = dr::Array<Point3f, max_depth>(
+                        //     Point3f(value.x(), uv.x(), uv.y()));
+                        // ls.result += addition & mask;
                     }
 
                     // ---------------------- BSDF sampling
@@ -274,13 +272,14 @@ public:
 
                     ls.active = active_next && (!rr_active || rr_continue) &&
                                 (throughput_max != 0.f);
+                    ls.ind += 1;
                 });
 
             // return { /* spec  = */ dr::select(ls.valid_ray, ls.result, 0.f),
             //          /* valid = */ ls.valid_ray };
             return { ls.result, ls.valid_ray };
         } else {
-            return { 0.0, false };
+            return { 0.f, false };
         }
     }
 
@@ -312,7 +311,6 @@ private:
     size_t m_sensor_height;
     size_t m_projector_width;
     size_t m_projector_height;
-    uint32_t m_max_depth;
     uint32_t m_rr_depth;
     bool m_hide_emitters;
 };

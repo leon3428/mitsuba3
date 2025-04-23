@@ -1,11 +1,9 @@
 import mitsuba as mi
 import drjit as dr
-import matplotlib.pyplot as plt
-from tqdm import tqdm
 import numpy as np
 import time
 
-mi.set_variant('cuda_mono')
+mi.set_variant('llvm_mono')
 scene = mi.load_file('scenes/test.xml')
 
 start_t = time.time()
@@ -19,7 +17,7 @@ medium = None
 sample_count = sampler.sample_count()
 
 integrator = mi.LTM(sensor_size[0], sensor_size[1],
-                    projector_size[0], projector_size[1], 6, 5, False)
+                    projector_size[0], projector_size[1], 5, False)
 
 active = True
 sampler.set_samples_per_wavefront(sample_count)
@@ -49,11 +47,11 @@ ray, ray_weight = sensor.sample_ray_differential(
 if ray.has_differentials:
     ray.scale_differential(diff_scale_factor)
 
-spec, mask = integrator.sample(scene, sampler, ray, pos, active)
-
-ltm = spec.numpy()
-np.savez_compressed('python/tmp', ltm=ltm,
-                    sensor_size=sensor_size, projector_size=projector_size)
+result, mask = integrator.sample(scene, sampler, ray, pos, active)
+print(result.shape)
+# ltm = spec.numpy()
+# np.savez_compressed('python/tmp', ltm=ltm,
+#                     sensor_size=sensor_size, projector_size=projector_size)
 
 end_t = time.time()
 print(end_t - start_t)
