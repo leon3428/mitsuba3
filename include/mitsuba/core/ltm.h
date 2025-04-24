@@ -23,7 +23,7 @@ template <typename Float, typename Spectrum> class MI_EXPORT_LIB LTM {
 public:
     MI_IMPORT_TYPES(Scene, Sampler, Medium, Emitter, EmitterPtr, BSDF, BSDFPtr)
 
-    constexpr static uint32_t max_depth = 6;
+    constexpr static uint32_t max_depth = 4;
 
     LTM(size_t sensor_width, size_t sensor_height, size_t projector_width,
         size_t projector_height, uint32_t rr_depth, bool hide_emitters)
@@ -32,7 +32,8 @@ public:
           m_projector_height(projector_height), m_rr_depth(rr_depth),
           m_hide_emitters(hide_emitters) {}
 
-    std::pair<dr::Array<Point3f, max_depth>, Bool>
+    std::tuple<dr::Array<Float, max_depth>, dr::Array<Float, max_depth>,
+               dr::Array<Float, max_depth>, Bool>
     sample(const Scene *scene, Sampler *sampler, const RayDifferential3f &ray_,
            const Point2i &ray_origin_, Bool active) const {
         MI_MASKED_FUNCTION(ProfilerPhase::SamplingIntegratorSample, active);
@@ -44,21 +45,23 @@ public:
             Spectrum throughput = 1.f;
             Float eta           = 1.f;
             UInt32 depth        = 0;
-
             // If m_hide_emitters == false, the environment emitter will be
             // visible
             Mask valid_ray =
                 !m_hide_emitters && (scene->environment() != nullptr);
-
             // Variables caching information from the previous bounce
             Interaction3f prev_si = dr::zeros<Interaction3f>();
             Float prev_bsdf_pdf   = 1.f;
             Bool prev_bsdf_delta  = true;
             BSDFContext bsdf_ctx;
-            dr::Array<Point3f, max_depth> result = 0.f;
-            UInt32 ind                           = 0;
+            dr::Array<Float, max_depth> values = 0.f;
+            dr::Array<Float, max_depth> us     = 0.f;
+            dr::Array<Float, max_depth> vs     = 0.f;
+            UInt32 ind                         = 0;
 
-            const auto indices = dr::arange<UInt32>(max_depth);
+            dr::Array<UInt32, max_depth> indices =
+                dr::arange<dr::Array<UInt32, max_depth>>(max_depth);
+            std::cout << depth << dr::width(ray) << '\n';
 
             /* Set up a Dr.Jit loop. This optimizes away to a normal loop in
                scalar mode, and it generates either a a megakernel (default) or
@@ -78,16 +81,28 @@ public:
                 Bool prev_bsdf_delta;
                 Bool active;
                 Sampler *sampler;
-                dr::Array<Point3f, max_depth> result;
+                dr::Array<Float, max_depth> values;
+                dr::Array<Float, max_depth> us = 0.f;
+                dr::Array<Float, max_depth> vs = 0.f;
                 UInt32 ind;
 
                 DRJIT_STRUCT(LoopState, ray, ray_origin, throughput, eta, depth,
                              valid_ray, prev_si, prev_bsdf_pdf, prev_bsdf_delta,
-                             active, sampler, result, ind)
-            } ls = { ray,     ray_origin_,   throughput,
-                     eta,     depth,         valid_ray,
-                     prev_si, prev_bsdf_pdf, prev_bsdf_delta,
-                     active,  sampler,       result,
+                             active, sampler, values, us, vs, ind)
+            } ls = { ray,
+                     ray_origin_,
+                     throughput,
+                     eta,
+                     depth,
+                     valid_ray,
+                     prev_si,
+                     prev_bsdf_pdf,
+                     prev_bsdf_delta,
+                     active,
+                     sampler,
+                     values,
+                     us,
+                     vs,
                      ind };
 
             dr::tie(ls) = dr::while_loop(
@@ -131,10 +146,10 @@ public:
                             ds.emitter->eval(si, ls.prev_bsdf_pdf > 0.f) *
                             mis_bsdf;
 
-                        // auto mask     = indices == ind;
-                        // auto addition = dr::Array<Point3f, max_depth>(
-                        //     Point3f(value.x(), uv.x(), uv.y()));
-                        // ls.result += addition & mask;
+                        auto mask = indices == ind;
+                        ls.values += value.x() & mask;
+                        ls.us += uv.x() & mask;
+                        ls.vs += uv.y() & mask;
                     }
 
                     // Continue tracing the path at this point?
@@ -204,10 +219,10 @@ public:
 
                         auto value =
                             ls.throughput * bsdf_val * em_weight * mis_em;
-                        // auto mask     = indices == ind;
-                        // auto addition = dr::Array<Point3f, max_depth>(
-                        //     Point3f(value.x(), uv.x(), uv.y()));
-                        // ls.result += addition & mask;
+                        auto mask = indices == ind;
+                        ls.values += value.x() & mask;
+                        ls.us += uv.x() & mask;
+                        ls.vs += uv.y() & mask;
                     }
 
                     // ---------------------- BSDF sampling
@@ -277,9 +292,9 @@ public:
 
             // return { /* spec  = */ dr::select(ls.valid_ray, ls.result, 0.f),
             //          /* valid = */ ls.valid_ray };
-            return { ls.result, ls.valid_ray };
+            return { ls.values, ls.us, ls.vs, ls.valid_ray };
         } else {
-            return { 0.f, false };
+            return { 0.f, 0.f, 0.f, false };
         }
     }
 

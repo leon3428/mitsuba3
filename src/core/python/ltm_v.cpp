@@ -9,6 +9,7 @@
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
+#include <nanobind/stl/tuple.h>
 
 MI_PY_EXPORT(ltm) {
     MI_PY_IMPORT_TYPES()
