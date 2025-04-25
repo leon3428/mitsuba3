@@ -1,5 +1,6 @@
 #pragma once
 
+#include "drjit-core/jit.h"
 #include "drjit/dynamic.h"
 #include "mitsuba/core/spectrum.h"
 #include <cstddef>
@@ -104,6 +105,7 @@ public:
                      vs,
                      ind };
 
+            // jit_set_flag(JitFlag::LoopRecord, false);
             dr::tie(ls) = dr::while_loop(
                 dr::make_tuple(ls),
                 [](const LoopState &ls) { return ls.active; },
@@ -219,7 +221,7 @@ public:
                         auto value =
                             ls.throughput * bsdf_val * em_weight * mis_em;
 
-                        auto mask = value.x() != 0.f && indices == ls.ind;
+                        auto mask =  active_em && value.x() != 0.f && indices == ls.ind;
                         ls.values += value.x() & mask;
                         ls.us += uv.x() & mask;
                         ls.vs += uv.y() & mask;

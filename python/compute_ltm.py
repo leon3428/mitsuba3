@@ -9,8 +9,8 @@ scene = mi.load_file('scenes/test.xml')
 
 start_t = time.time()
 
-sensor_size = (1024, 1024)
-projector_size = (1024, 1024)
+sensor_size = (128, 128)
+projector_size = (128, 128)
 
 sensor = scene.sensors()[0]
 sampler = sensor.sampler()
@@ -49,6 +49,7 @@ if ray.has_differentials:
     ray.scale_differential(diff_scale_factor)
 
 values, us, vs, mask = integrator.sample(scene, sampler, ray, pos, active)
+values *= ray_weight.x
 
 end_t = time.time()
 print(end_t - start_t)
