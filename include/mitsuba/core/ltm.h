@@ -61,7 +61,6 @@ public:
 
             dr::Array<UInt32, max_depth> indices =
                 dr::arange<dr::Array<UInt32, max_depth>>(max_depth);
-            std::cout << depth << dr::width(ray) << '\n';
 
             /* Set up a Dr.Jit loop. This optimizes away to a normal loop in
                scalar mode, and it generates either a a megakernel (default) or
@@ -112,7 +111,6 @@ public:
                     /* dr::while_loop implicitly masks all code in the loop
                        using the 'active' flag, so there is no need to pass it
                        to every function */
-                    auto ind = ls.ind;
 
                     SurfaceInteraction3f si =
                         scene->ray_intersect(ls.ray,
@@ -128,6 +126,7 @@ public:
                        independently. In this case, dr::any_or<..>() returns the
                        template argument (true) which means that the 'if'
                        statement is always conservatively taken. */
+                    // auto emitters = si.emitter(scene)
                     if (dr::any_or<true>(si.emitter(scene) != nullptr)) {
                         DirectionSample3f ds(scene, si, ls.prev_si);
                         Float em_pdf = 0.f;
@@ -146,7 +145,7 @@ public:
                             ds.emitter->eval(si, ls.prev_bsdf_pdf > 0.f) *
                             mis_bsdf;
 
-                        auto mask = indices == ind;
+                        auto mask = value.x() != 0.f && indices == ls.ind;
                         ls.values += value.x() & mask;
                         ls.us += uv.x() & mask;
                         ls.vs += uv.y() & mask;
@@ -219,7 +218,8 @@ public:
 
                         auto value =
                             ls.throughput * bsdf_val * em_weight * mis_em;
-                        auto mask = indices == ind;
+
+                        auto mask = value.x() != 0.f && indices == ls.ind;
                         ls.values += value.x() & mask;
                         ls.us += uv.x() & mask;
                         ls.vs += uv.y() & mask;
@@ -304,21 +304,6 @@ public:
         pdf_b *= pdf_b;
         Float w = pdf_a / (pdf_a + pdf_b);
         return dr::detach<true>(dr::select(dr::isfinite(w), w, 0.f));
-    }
-
-    UInt32 ltm_ind(Point2i ray_origin, Point2f uv) const {
-        auto ray_destination_x =
-            static_cast<UInt32>(uv[0] * (m_projector_width - 1));
-        auto ray_destination_y =
-            static_cast<UInt32>((1.0f - uv[1]) * (m_projector_height - 1));
-
-        // return y * m_projector_width + x;
-        auto a          = m_projector_width * m_projector_height;
-        auto sensor_ind = ray_origin.y() * m_sensor_width + ray_origin.x();
-        auto projector_ind =
-            ray_destination_y * m_projector_width + ray_destination_x;
-
-        return sensor_ind * a + projector_ind;
     }
 
 private:

@@ -9,8 +9,8 @@ scene = mi.load_file('scenes/test.xml')
 
 start_t = time.time()
 
-sensor_size = (32, 32)
-projector_size = (32, 32)
+sensor_size = (1024, 1024)
+projector_size = (1024, 1024)
 
 sensor = scene.sensors()[0]
 sampler = sensor.sampler()
@@ -62,9 +62,9 @@ us = np.astype(us * (projector_size[0] - 1), np.uint32)
 vs = np.astype((1.0 - vs) * (projector_size[1] - 1), np.uint32)
 
 pos = pos.numpy()
-row = pos[0] * sensor_size[0] + pos[1]
+row = pos[1] * sensor_size[0] + pos[0]
 row = np.tile(row, 4)
-col = us * projector_size[0] + vs
+col = vs * projector_size[0] + us
 
 row = row[mask]
 col = col[mask]
