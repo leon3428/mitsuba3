@@ -1,10 +1,5 @@
 #pragma once
 
-#include "drjit-core/jit.h"
-#include "drjit/dynamic.h"
-#include "mitsuba/core/spectrum.h"
-#include <cstddef>
-#include <cstdint>
 #include <drjit/array.h>
 #include <mitsuba/core/properties.h>
 #include <mitsuba/core/ray.h>
@@ -12,29 +7,19 @@
 #include <mitsuba/render/emitter.h>
 #include <mitsuba/render/integrator.h>
 #include <mitsuba/render/records.h>
-#include <type_traits>
 
 NAMESPACE_BEGIN(mitsuba)
 
-template <typename Float>
-using ResultArray = typename std::conditional<dr::is_array_v<Float>, Float,
-                                              dr::DynamicArray<Float>>::type;
-
-template <typename Float, typename Spectrum> class MI_EXPORT_LIB LTM {
+template <typename Float, typename Spectrum, size_t max_depth>
+class MI_EXPORT_LIB LightTransportIntegrator {
 public:
     MI_IMPORT_TYPES(Scene, Sampler, Medium, Emitter, EmitterPtr, BSDF, BSDFPtr)
 
-    constexpr static uint32_t max_depth = 4;
-
-    LTM(size_t sensor_width, size_t sensor_height, size_t projector_width,
-        size_t projector_height, uint32_t rr_depth, bool hide_emitters)
-        : m_sensor_width(sensor_width), m_sensor_height(sensor_height),
-          m_projector_width(projector_width),
-          m_projector_height(projector_height), m_rr_depth(rr_depth),
-          m_hide_emitters(hide_emitters) {}
+    LightTransportIntegrator(uint32_t rr_depth, bool hide_emitters)
+        : m_rr_depth(rr_depth), m_hide_emitters(hide_emitters) {}
 
     std::tuple<dr::Array<Float, max_depth>, dr::Array<Float, max_depth>,
-               dr::Array<Float, max_depth>, Bool>
+               dr::Array<Float, max_depth>>
     sample(const Scene *scene, Sampler *sampler, const RayDifferential3f &ray_,
            const Point2i &ray_origin_, Bool active) const {
         MI_MASKED_FUNCTION(ProfilerPhase::SamplingIntegratorSample, active);
@@ -221,7 +206,8 @@ public:
                         auto value =
                             ls.throughput * bsdf_val * em_weight * mis_em;
 
-                        auto mask =  active_em && value.x() != 0.f && indices == ls.ind;
+                        auto mask =
+                            active_em && value.x() != 0.f && indices == ls.ind;
                         ls.values += value.x() & mask;
                         ls.us += uv.x() & mask;
                         ls.vs += uv.y() & mask;
@@ -294,9 +280,9 @@ public:
 
             // return { /* spec  = */ dr::select(ls.valid_ray, ls.result, 0.f),
             //          /* valid = */ ls.valid_ray };
-            return { ls.values, ls.us, ls.vs, ls.valid_ray };
+            return { ls.values, ls.us, ls.vs };
         } else {
-            return { 0.f, 0.f, 0.f, false };
+            return { 0.f, 0.f, 0.f };
         }
     }
 
@@ -309,10 +295,6 @@ public:
     }
 
 private:
-    size_t m_sensor_width;
-    size_t m_sensor_height;
-    size_t m_projector_width;
-    size_t m_projector_height;
     uint32_t m_rr_depth;
     bool m_hide_emitters;
 };

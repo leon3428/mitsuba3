@@ -17,4 +17,4 @@ print(np.max(hdr_mapped), np.min(hdr_mapped))
 
 plt.axis("off")
 plt.imshow(hdr_mapped, cmap='gray', vmin=0.0, vmax=1.0)
-plt.savefig('2.png')
+plt.show()
