@@ -105,10 +105,6 @@ public:
         dr::sync_thread();
 
         size_t cnt = dr::width(values) * values.size();
-        std::vector<unsigned> norm(sensor_size.first * sensor_size.second, 0);
-        for (size_t i = 0; i < cnt; i++) {
-            norm[cpu_rows.data()[i]] += 1;
-        }
 
         std::vector<float> v;
         std::vector<unsigned> r;
@@ -119,7 +115,7 @@ public:
                 r.push_back(cpu_rows.data()[i]);
                 c.push_back(cpu_cols.data()[i]);
                 v.push_back(cpu_values.data()[i] /
-                            static_cast<float>(norm[cpu_rows.data()[i]]));
+                            static_cast<float>(sample_count));
             }
         }
 
