@@ -1,0 +1,23 @@
+import mitsuba as mi
+import matplotlib.pyplot as plt
+import numpy as np
+from PIL import Image
+
+mi.set_variant('cuda_mono')
+scene = mi.load_file("./scenes/test.xml")
+img = mi.render(scene)
+
+hdr_mapped = img.numpy() ** (1.0 / 2.2)
+print(np.max(hdr_mapped), np.min(hdr_mapped))
+
+plt.axis("off")
+plt.imshow(hdr_mapped, cmap="gray", vmin=0.0, vmax=1.0)
+plt.show()
+
+hdr_mapped *= 255.0
+hdr_mapped = hdr_mapped.astype(np.uint8)[:, :, 0]
+
+print(hdr_mapped.dtype, hdr_mapped.shape)
+
+img = Image.fromarray(hdr_mapped, mode="L")
+img.save("mitchell.png")

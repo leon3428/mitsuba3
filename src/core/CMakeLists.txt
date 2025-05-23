@@ -65,6 +65,8 @@ add_library(mitsuba-core OBJECT
                     ${INC_DIR}/quad.h
 
   dither-matrix256.cpp
+  ${INC_DIR}/light_transport.h
+  ${INC_DIR}/light_transport_integrator.h
 )
 
 set_property(
