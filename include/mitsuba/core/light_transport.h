@@ -15,7 +15,6 @@
 #include <mitsuba/render/emitter.h>
 #include <mitsuba/render/integrator.h>
 #include <mitsuba/render/records.h>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -35,7 +34,7 @@ public:
 
     constexpr static uint32_t max_depth = 4;
 
-    std::tuple<std::vector<float>, std::vector<unsigned>, std::vector<unsigned>>
+    std::tuple<dr::DynamicArray<float>, dr::DynamicArray<unsigned>, dr::DynamicArray<unsigned>>
     render_light_transport(mitsuba::Scene<Float, Spectrum> *scene,
                            std::pair<size_t, size_t> sensor_size,
                            std::pair<size_t, size_t> projector_size) {
@@ -77,7 +76,7 @@ public:
 
         auto [values, us, vs] =
             m_integrator.sample(scene, sampler, ray, pos, true);
-        values *= ray_weight.x();
+        values *= ray_weight.x() / Float(sample_count);
 
         auto mask =
             (values != 0) & (us >= 0) & (us <= 1) & (vs >= 0) & (vs <= 1);
@@ -104,22 +103,7 @@ public:
 
         dr::sync_thread();
 
-        size_t cnt = dr::width(values) * values.size();
-
-        std::vector<float> v;
-        std::vector<unsigned> r;
-        std::vector<unsigned> c;
-
-        for (size_t i = 0; i < cnt; i++) {
-            if (cpu_values.data()[i] != 0.f) {
-                r.push_back(cpu_rows.data()[i]);
-                c.push_back(cpu_cols.data()[i]);
-                v.push_back(cpu_values.data()[i] /
-                            static_cast<float>(sample_count));
-            }
-        }
-
-        return { v, r, c };
+        return { cpu_values, cpu_rows, cpu_cols };
     }
 
     LightTransport(uint32_t rr_depth, bool hide_emitters)
