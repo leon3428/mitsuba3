@@ -1,7 +1,7 @@
-#include <cstddef>
 #include <cstdint>
 #include <mitsuba/core/light_transport.h>
 #include <mitsuba/core/light_transport_integrator.h>
+#include <mitsuba/core/sparse_matrix.h>
 #include <mitsuba/core/properties.h>
 #include <mitsuba/core/spectrum.h>
 #include <mitsuba/python/python.h>

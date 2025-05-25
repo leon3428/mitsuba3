@@ -67,6 +67,7 @@ add_library(mitsuba-core OBJECT
   dither-matrix256.cpp
   ${INC_DIR}/light_transport.h
   ${INC_DIR}/light_transport_integrator.h
+  sparse_matrix.cpp ${INC_DIR}/sparse_matrix.h
 )
 
 set_property(

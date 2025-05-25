@@ -3,6 +3,7 @@
 #include "drjit-core/jit.h"
 #include "drjit/dynamic.h"
 #include "drjit/util.h"
+#include "mitsuba/core/sparse_matrix.h"
 #include "mitsuba/core/vector.h"
 #include "mitsuba/render/scene.h"
 #include <cstddef>
@@ -34,8 +35,7 @@ public:
 
     constexpr static uint32_t max_depth = 4;
 
-    std::tuple<dr::DynamicArray<float>, dr::DynamicArray<unsigned>, dr::DynamicArray<unsigned>>
-    render_light_transport(mitsuba::Scene<Float, Spectrum> *scene,
+    void render_light_transport(mitsuba::Scene<Float, Spectrum> *scene,
                            std::pair<size_t, size_t> sensor_size,
                            std::pair<size_t, size_t> projector_size) {
 
@@ -102,12 +102,19 @@ public:
         auto cpu_cols   = dr::migrate(dr::ravel(cols), AllocType::Host);
 
         dr::sync_thread();
+        size_t cnt = dr::width(values) * values.size();
 
-        return { cpu_values, cpu_rows, cpu_cols };
+        unsigned *p_rows = cpu_rows.data();
+        unsigned *p_cols = cpu_cols.data();
+        float *p_values = cpu_values.data();
+
+        SparseMatrix matrix(p_rows, p_cols, p_values, cnt);
+
+        matrix.sum_duplicates();
     }
 
     LightTransport(uint32_t rr_depth, bool hide_emitters)
-        : m_integrator(rr_depth, hide_emitters) {}
+      : m_integrator(rr_depth, hide_emitters) {}
 
 private:
     LightTransportIntegrator<Float, Spectrum, max_depth> m_integrator;
