@@ -1,32 +1,12 @@
 #pragma once
 
-#include "drjit-core/jit.h"
-#include "drjit/dynamic.h"
-#include "drjit/util.h"
-#include "mitsuba/core/sparse_matrix.h"
-#include "mitsuba/core/vector.h"
-#include "mitsuba/render/scene.h"
-#include <cstddef>
-#include <cstdint>
-#include <drjit/array.h>
+#include "drjit/array.h"
+#include "drjit/array_traits.h"
 #include <mitsuba/core/light_transport_integrator.h>
-#include <mitsuba/core/properties.h>
-#include <mitsuba/core/ray.h>
-#include <mitsuba/render/bsdf.h>
-#include <mitsuba/render/emitter.h>
-#include <mitsuba/render/integrator.h>
 #include <mitsuba/render/records.h>
-#include <utility>
-#include <vector>
+#include <type_traits>
 
 namespace mitsuba {
-
-struct pair_hash {
-    template <class T1, class T2>
-    std::size_t operator()(const std::pair<T1, T2> &pair) const {
-        return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
-    }
-};
 
 template <typename Float, typename Spectrum>
 class MI_EXPORT_LIB LightTransport {
@@ -34,8 +14,11 @@ public:
     MI_IMPORT_TYPES(Scene, Sampler, Medium, Emitter, EmitterPtr, BSDF, BSDFPtr)
 
     constexpr static uint32_t max_depth = 4;
+    using IndexArray = std::conditional_t<drjit::is_array_v<UInt32>, UInt32, dr::Array<unsigned, max_depth>>;
+    using ValueArray = std::conditional_t<drjit::is_array_v<Float>, Float, dr::Array<float, max_depth>>;
 
-    void render_light_transport(mitsuba::Scene<Float, Spectrum> *scene,
+    std::tuple<IndexArray, IndexArray, ValueArray>
+    render_light_transport(mitsuba::Scene<Float, Spectrum> *scene,
                            std::pair<size_t, size_t> sensor_size,
                            std::pair<size_t, size_t> projector_size) {
 
@@ -96,25 +79,23 @@ public:
         cols &= mask;
 
         dr::eval(values, rows, cols);
-
-        auto cpu_values = dr::migrate(dr::ravel(values), AllocType::Host);
-        auto cpu_rows   = dr::migrate(dr::ravel(rows), AllocType::Host);
-        auto cpu_cols   = dr::migrate(dr::ravel(cols), AllocType::Host);
+        auto v = dr::ravel(values);
+        auto r = dr::ravel(rows);
+        auto c = dr::ravel(cols);
 
         dr::sync_thread();
-        size_t cnt = dr::width(values) * values.size();
 
-        unsigned *p_rows = cpu_rows.data();
-        unsigned *p_cols = cpu_cols.data();
-        float *p_values = cpu_values.data();
-
-        SparseMatrix matrix(p_rows, p_cols, p_values, cnt);
-
-        matrix.sum_duplicates();
+        if constexpr (drjit::is_jit_v<Float>) {
+            static_assert(std::is_same_v<decltype(v), Float>);
+        } else {
+            static_assert(std::is_same_v<decltype(v), dr::Array<float, max_depth>>);
+        }
+       
+        return { r, c, v };
     }
 
     LightTransport(uint32_t rr_depth, bool hide_emitters)
-      : m_integrator(rr_depth, hide_emitters) {}
+        : m_integrator(rr_depth, hide_emitters) {}
 
 private:
     LightTransportIntegrator<Float, Spectrum, max_depth> m_integrator;

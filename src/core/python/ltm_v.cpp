@@ -1,7 +1,7 @@
+#include "mitsuba/core/dataset_generator.h"
 #include <cstdint>
 #include <mitsuba/core/light_transport.h>
 #include <mitsuba/core/light_transport_integrator.h>
-#include <mitsuba/core/sparse_matrix.h>
 #include <mitsuba/core/properties.h>
 #include <mitsuba/core/spectrum.h>
 #include <mitsuba/python/python.h>
@@ -24,6 +24,14 @@ MI_PY_EXPORT(ltm) {
         .def(nb::init<uint32_t, bool>(), "bla", "rr_depth"_a, "hide_emitters"_a)
         .def("render_light_transport",
              &LightTransport<Float, Spectrum>::render_light_transport);
+
+    nb::class_<DatasetGenerator<Float, Spectrum>>(m, "DatasetGenerator",
+                                                  "bla bla")
+        .def(nb::init<uint32_t, bool, std::pair<size_t, size_t>,
+                      std::pair<size_t, size_t>>(),
+             "bla", "rr_depth"_a, "hide_emitters"_a, "sensor_size"_a,
+             "projector_size"_a)
+        .def("render", &DatasetGenerator<Float, Spectrum>::render);
 }
 
 #undef SET_PROPS

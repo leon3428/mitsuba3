@@ -7,6 +7,8 @@ include_directories(
   ${JPEG_INCLUDE_DIRS}
 )
 
+find_package(HDF5 REQUIRED COMPONENTS CXX)
+
 set(INC_DIR "../../include/mitsuba/core")
 
 add_library(mitsuba-core OBJECT
@@ -65,9 +67,8 @@ add_library(mitsuba-core OBJECT
                     ${INC_DIR}/quad.h
 
   dither-matrix256.cpp
-  ${INC_DIR}/light_transport.h
-  ${INC_DIR}/light_transport_integrator.h
-  sparse_matrix.cpp ${INC_DIR}/sparse_matrix.h
+  light_transport.cpp ${INC_DIR}/light_transport.h
+  dataset_generator.cpp ${INC_DIR}/dataset_generator.h
 )
 
 set_property(
@@ -105,7 +106,10 @@ if (NOT MSVC)
 endif()
 
 target_link_libraries(mitsuba-core PUBLIC drjit)
+target_link_libraries(mitsuba-core PUBLIC ${HDF5_LIBRARIES})
 target_link_libraries(mitsuba-core PRIVATE fast_float)
+
+target_include_directories(mitsuba-core PUBLIC ${HDF5_INCLUDE_DIRS})
 
 if (MI_ENABLE_JIT)
   target_link_libraries(mitsuba-core PUBLIC drjit-core)
