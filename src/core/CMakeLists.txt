@@ -69,6 +69,7 @@ add_library(mitsuba-core OBJECT
   dither-matrix256.cpp
   light_transport.cpp ${INC_DIR}/light_transport.h
   dataset_generator.cpp ${INC_DIR}/dataset_generator.h
+  thread_safe_queue.cpp ${INC_DIR}/thread_safe_queue.h
 )
 
 set_property(
