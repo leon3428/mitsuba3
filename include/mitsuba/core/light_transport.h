@@ -71,6 +71,9 @@ public:
             auto cpu_cols   = dr::migrate(std::move(cols), AllocType::Host);
             auto cpu_values = dr::migrate(std::move(values), AllocType::Host);
 
+            dr::eval(cpu_rows, cpu_cols, cpu_values);
+            dr::sync_thread();
+
             process_render(cpu_rows, cpu_cols, cpu_values, lt);
             if (pass_cnt > 1) {
                 sampler->advance();

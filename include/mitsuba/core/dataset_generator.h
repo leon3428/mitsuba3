@@ -34,28 +34,26 @@ public:
     }
 
     ~DatasetGenerator() {
-        std::cout << "Generator out\n";
         queue_.done();
         for (auto &th : threads_) {
             th.join();
         }
     }
 
-    void render(std::string const& path,
+    void render(std::string const &path,
                 mitsuba::Scene<Float, Spectrum> *scene) {
-        std::cout << "Rendering: " << path << '\n';
         auto mat = lt_.render_light_transport(scene, sample_count_per_pass_,
                                               sensor_size_, projector_size_);
 
         queue_.push({ path, std::move(mat) });
     }
 
-    void write_mat(std::filesystem::path path, COOMatrix &&mat) {
+    void write_mat(std::filesystem::path path, const COOMatrix &mat) {
         std::vector<unsigned> rows;
         std::vector<unsigned> cols;
         std::vector<float> values;
 
-        for (auto &[key, val] : mat) {
+        for (const auto &[key, val] : mat) {
             rows.push_back(key.first);
             cols.push_back(key.second);
             values.push_back(val);
@@ -85,8 +83,7 @@ public:
 private:
     void writer_() {
         while (auto opt = queue_.wait_and_pop()) {
-            std::cout << "Writing: " << opt->first << '\n';
-            write_mat(opt->first, std::move(opt->second));
+            write_mat(opt->first, opt->second);
         }
     }
 
