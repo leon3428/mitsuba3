@@ -2,22 +2,70 @@
 
 #include "drjit/array.h"
 #include "drjit/array_traits.h"
+#include <cassert>
 #include <mitsuba/core/light_transport_integrator.h>
 #include <mitsuba/render/records.h>
+#include <numeric>
 #include <stdexcept>
 #include <type_traits>
+#include <vector>
 
 namespace mitsuba {
 
-struct PairHash {
-    template <class T1, class T2>
-    std::size_t operator()(const std::pair<T1, T2> &p) const {
-        size_t seed = 0;
-        seed ^= std::hash<unsigned>{}(p.first) + 0x9e3779b9 + (seed << 6) +
-                (seed >> 2);
-        seed ^= std::hash<unsigned>{}(p.second) + 0x9e3779b9 + (seed << 6) +
-                (seed >> 2);
-        return seed;
+struct CooMatrix {
+    std::vector<unsigned> rows;
+    std::vector<unsigned> cols;
+    std::vector<uint16_t> values;
+
+    void sum_duplicates() {
+        if (rows.empty())
+            return;
+
+        std::vector<size_t> indices(rows.size());
+        std::iota(indices.begin(), indices.end(), 0);
+
+        // Sort by (row, col) pairs
+        std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
+            if (rows[a] != rows[b]) {
+                return rows[a] < rows[b];
+            }
+            return cols[a] < cols[b];
+        });
+
+        std::vector<unsigned> result_rows;
+        std::vector<unsigned> result_cols;
+        std::vector<uint16_t> result_values;
+
+        size_t current_idx     = indices[0];
+        unsigned current_row   = rows[current_idx];
+        unsigned current_col   = cols[current_idx];
+        uint16_t current_value = values[current_idx];
+
+        for (size_t i = 1; i < indices.size(); ++i) {
+            size_t idx = indices[i];
+
+            if (rows[idx] == current_row && cols[idx] == current_col) {
+                current_value += values[idx];
+            } else {
+                result_rows.push_back(current_row);
+                result_cols.push_back(current_col);
+                result_values.push_back(current_value);
+
+                current_row   = rows[idx];
+                current_col   = cols[idx];
+                current_value = values[idx];
+            }
+        }
+
+        // Add the last group
+        result_rows.push_back(current_row);
+        result_cols.push_back(current_col);
+        result_values.push_back(current_value);
+
+        // Replace original vectors
+        rows   = std::move(result_rows);
+        cols   = std::move(result_cols);
+        values = std::move(result_values);
     }
 };
 
@@ -32,13 +80,12 @@ public:
                                           dr::Array<unsigned, max_depth>>;
     using ValueArray = std::conditional_t<drjit::is_array_v<Float>, Float,
                                           dr::Array<float, max_depth>>;
-    using COOMatrix =
-        std::unordered_map<std::pair<unsigned, unsigned>, float, PairHash>;
 
-    COOMatrix render_light_transport(mitsuba::Scene<Float, Spectrum> *scene,
+    CooMatrix render_light_transport(mitsuba::Scene<Float, Spectrum> *scene,
                                      size_t sample_count_per_pass,
                                      std::pair<size_t, size_t> sensor_size,
-                                     std::pair<size_t, size_t> projector_size) {
+                                     std::pair<size_t, size_t> projector_size,
+                                     float value_threshold = 0.0) {
 
         auto sensor       = scene->sensors()[0];
         auto sampler      = sensor->sampler();
@@ -59,7 +106,7 @@ public:
         auto pos = Point2i();
         pos.y()  = idx / sensor_size.first;
         pos.x()  = idx - sensor_size.first * pos.y();
-        COOMatrix lt;
+        CooMatrix lt;
 
         auto pass_cnt = sample_count / sample_count_per_pass;
         for (size_t i = 0; i < pass_cnt; ++i) {
@@ -74,19 +121,24 @@ public:
             dr::eval(cpu_rows, cpu_cols, cpu_values);
             dr::sync_thread();
 
-            process_render(cpu_rows, cpu_cols, cpu_values, lt);
+            process_render(cpu_rows, cpu_cols, cpu_values, lt, value_threshold);
             if (pass_cnt > 1) {
                 sampler->advance();
                 sampler->schedule_state();
             }
         }
 
+        lt.sum_duplicates();
         return lt;
     }
 
     void process_render(IndexArray const &rows, IndexArray const &cols,
-                        ValueArray const &values, COOMatrix &dst) {
+                        ValueArray const &values, CooMatrix &dst,
+                        float value_threshold) {
         auto size = rows.size();
+        dst.rows.reserve(dst.rows.size() + size);
+        dst.cols.reserve(dst.cols.size() + size);
+        dst.values.reserve(dst.values.size() + size);
 
         const unsigned *rows_array = rows.data();
         const unsigned *cols_array = cols.data();
@@ -94,12 +146,12 @@ public:
 
         for (size_t i = 0; i < size; ++i) {
             const auto value = values_array[i];
-            if (value != 0.f) {
-                const auto key = std::make_pair(rows_array[i], cols_array[i]);
-                auto [it, inserted] = dst.try_emplace(key, value);
-                if (!inserted) {
-                    it->second += value;
-                }
+            if (value > value_threshold) {
+                auto fixed_precision_value =
+                    static_cast<uint16_t>(std::round(value * 65535.0f));
+                dst.rows.push_back(rows_array[i]);
+                dst.cols.push_back(cols_array[i]);
+                dst.values.push_back(fixed_precision_value);
             }
         }
     }

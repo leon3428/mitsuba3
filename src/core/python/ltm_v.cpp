@@ -23,9 +23,9 @@ MI_PY_EXPORT(ltm) {
     nb::class_<DatasetGenerator<Float, Spectrum>>(m, "DatasetGenerator",
                                                   "bla bla")
         .def(nb::init<uint32_t, bool, size_t, std::pair<size_t, size_t>,
-                      std::pair<size_t, size_t>, size_t>(),
+                      std::pair<size_t, size_t>, size_t, float>(),
              "bla", "rr_depth"_a, "sample_count_per_pass"_a, "hide_emitters"_a,
-             "sensor_size"_a, "projector_size"_a, "writer_cnt"_a)
+             "sensor_size"_a, "projector_size"_a, "writer_cnt"_a, "value_threshold"_a)
         .def("render", &DatasetGenerator<Float, Spectrum>::render);
 }
 
