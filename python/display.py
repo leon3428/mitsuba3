@@ -8,10 +8,10 @@ with h5py.File('ltm.h5', 'r') as f:
     rows = np.array(f['rows'])
     cols = np.array(f['cols'])
     values = np.array(f['values'])
+    sensor_size = (f.attrs['camera_width'], f.attrs['camera_height'])
+    projector_size = (f.attrs['projector_width'], f.attrs['projector_height'])
 
 values = values.astype(np.float32) / ((1 << 16) - 1)  # Normalize values to [0, 1]
-sensor_size = (1024, 1024)
-projector_size = (1024, 1024)
 ltm = scipy.sparse.coo_matrix((values, (rows, cols)), shape=(
     sensor_size[0]*sensor_size[1], projector_size[0]*projector_size[1]))
 

@@ -68,6 +68,25 @@ public:
             file.createDataSet("values", H5::PredType::NATIVE_UINT16,
                                H5::DataSpace(1, dims), plist);
         values_dataset.write(mat.values.data(), H5::PredType::NATIVE_UINT16);
+
+         // Write resolution as file attributes
+        H5::DataSpace attr_space = H5::DataSpace(H5S_SCALAR);
+        
+        H5::Attribute proj_width_attr = file.createAttribute(
+            "projector_width", H5::PredType::NATIVE_UINT, attr_space);
+        proj_width_attr.write(H5::PredType::NATIVE_UINT, &projector_size_.first);
+        
+        H5::Attribute proj_height_attr = file.createAttribute(
+            "projector_height", H5::PredType::NATIVE_UINT, attr_space);
+        proj_height_attr.write(H5::PredType::NATIVE_UINT, &projector_size_.second);
+        
+        H5::Attribute cam_width_attr = file.createAttribute(
+            "camera_width", H5::PredType::NATIVE_UINT, attr_space);
+        cam_width_attr.write(H5::PredType::NATIVE_UINT, &sensor_size_.first);
+        
+        H5::Attribute cam_height_attr = file.createAttribute(
+            "camera_height", H5::PredType::NATIVE_UINT, attr_space);
+        cam_height_attr.write(H5::PredType::NATIVE_UINT, &sensor_size_.second);
     }
 
 private:

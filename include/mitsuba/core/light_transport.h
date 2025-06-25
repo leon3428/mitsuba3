@@ -3,6 +3,7 @@
 #include "drjit/array.h"
 #include "drjit/array_traits.h"
 #include <cassert>
+#include <cstddef>
 #include <mitsuba/core/light_transport_integrator.h>
 #include <mitsuba/render/records.h>
 #include <numeric>
@@ -17,55 +18,59 @@ struct CooMatrix {
     std::vector<unsigned> cols;
     std::vector<uint16_t> values;
 
+    struct Entry {
+        unsigned row, col;
+        uint16_t value;
+
+        bool operator<(const Entry &other) const {
+            if (row != other.row)
+                return row < other.row;
+            return col < other.col;
+        }
+
+        bool operator==(const Entry &other) const {
+            return row == other.row && col == other.col;
+        }
+    };
+
     void sum_duplicates() {
         if (rows.empty())
             return;
 
-        std::vector<size_t> indices(rows.size());
-        std::iota(indices.begin(), indices.end(), 0);
+        std::vector<Entry> entries;
+        entries.reserve(rows.size());
 
-        // Sort by (row, col) pairs
-        std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
-            if (rows[a] != rows[b]) {
-                return rows[a] < rows[b];
-            }
-            return cols[a] < cols[b];
-        });
+        // Pack into struct
+        for (size_t i = 0; i < rows.size(); ++i) {
+            entries.push_back({ rows[i], cols[i], values[i] });
+        }
 
-        std::vector<unsigned> result_rows;
-        std::vector<unsigned> result_cols;
-        std::vector<uint16_t> result_values;
+        // Sort by (row, col)
+        std::sort(entries.begin(), entries.end());
 
-        size_t current_idx     = indices[0];
-        unsigned current_row   = rows[current_idx];
-        unsigned current_col   = cols[current_idx];
-        uint16_t current_value = values[current_idx];
+        size_t ind    = 0;
+        Entry current = entries[ind];
 
-        for (size_t i = 1; i < indices.size(); ++i) {
-            size_t idx = indices[i];
-
-            if (rows[idx] == current_row && cols[idx] == current_col) {
-                current_value += values[idx];
+        for (size_t i = 1; i < entries.size(); ++i) {
+            if (entries[i].row == current.row &&
+                entries[i].col == current.col) {
+                current.value += entries[i].value;
             } else {
-                result_rows.push_back(current_row);
-                result_cols.push_back(current_col);
-                result_values.push_back(current_value);
-
-                current_row   = rows[idx];
-                current_col   = cols[idx];
-                current_value = values[idx];
+                rows[ind]   = current.row;
+                cols[ind]   = current.col;
+                values[ind] = current.value;
+                current     = entries[i];
+                ind++;
             }
         }
 
-        // Add the last group
-        result_rows.push_back(current_row);
-        result_cols.push_back(current_col);
-        result_values.push_back(current_value);
+        rows[ind]   = current.row;
+        cols[ind]   = current.col;
+        values[ind] = current.value;
 
-        // Replace original vectors
-        rows   = std::move(result_rows);
-        cols   = std::move(result_cols);
-        values = std::move(result_values);
+        rows.resize(ind + 1);
+        cols.resize(ind + 1);
+        values.resize(ind + 1);
     }
 };
 
