@@ -150,8 +150,9 @@ public:
         const float *values_array  = values.data();
 
         for (size_t i = 0; i < size; ++i) {
-            const auto value = values_array[i];
+            auto value = values_array[i];
             if (value > value_threshold) {
+                value = std::min(value, 1.0f);
                 auto fixed_precision_value =
                     static_cast<uint16_t>(std::round(value * 65535.0f));
                 dst.rows.push_back(rows_array[i]);
