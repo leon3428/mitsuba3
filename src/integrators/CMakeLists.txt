@@ -2,6 +2,7 @@ set(MI_PLUGIN_PREFIX "integrators")
 
 add_plugin(aov        aov.cpp)
 add_plugin(depth      depth.cpp)
+add_plugin(zdepth      z_depth.cpp)
 add_plugin(direct     direct.cpp)
 add_plugin(moment     moment.cpp)
 add_plugin(path       path.cpp)
